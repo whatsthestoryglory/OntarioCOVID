@@ -33,6 +33,7 @@ dynamicplot <- covid_status %>%
   add_lines(y = ~Number.of.patients.in.ICU.on.a.ventilator.with.COVID.19, name = "Patients on vent", legendgroup = "current") %>%
   add_lines(y = ~Number.of.patients.in.ICU.with.COVID.19, name = "Patients in ICU", legendgroup = "current") %>%
   add_lines(y = ~Number.of.patients.hospitalized.with.COVID.19, name = "Patients in Hospital", legendgroup = "current") %>%
+  add_lines(y = ~Total.LTC.Resident.Deaths, name = "Long Term Care Resident Deaths", legendgroup = "cumulative") %>%
   layout(title = "Ontario COVID-19 Numbers",
          xaxis = list(title = "Reported Date"),
          yaxis = list(title = "Quantity of Cases")
