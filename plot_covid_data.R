@@ -1,21 +1,26 @@
 library(readr)
 library(tidyverse)
 library(plotly)
+library(sf)
+library(rmapshaper)
 
+#  Load all of my data files.  These are downloaded daily by a separate script
 vaccinedestfile <- "~/RProjects/COVID/vaccine_data.csv"
 vaccinedata <- read.csv(vaccinedestfile)
-
 confirmed_cases_file <- "~/RProjects/COVID/confirmed_cases.csv"
-
 confirmed_cases <- read.csv(confirmed_cases_file)
-
 covid_status_file <- "~/RProjects/COVID/covid_status.csv"
-
 covid_status <- read.csv(covid_status_file)
+covid_status_by_PHU_file <- "~/RProjects/COVID/covid_status_by_PHU.csv"
+covid_status_by_PHU <- read.csv(covid_status_by_PHU_file)
 
-case_overview <- confirmed_cases %>% group_by(Reporting_PHU, Age_Group) %>% summarise(total = n() ) %>% pivot_wider(names_from = Age_Group, values_from = total)
+# Create a table showing total case count by region
+case_overview <- confirmed_cases %>% group_by(Reporting_PHU_ID, Age_Group) %>% summarise(total = n() ) %>% pivot_wider(names_from = Age_Group, values_from = total)
 
+# Change this field to be a date field so rendering graphics works better
 covid_status$Reported.Date <- as.Date(covid_status$Reported.Date)
+
+# Static plot to explore data.  Unlikely to be used for anything.
 staticplot <- covid_status %>%
   ggplot(aes(x=Reported.Date, group=1)) + 
 #  geom_line(aes(y=Confirmed.Positive), color="purple") +
@@ -25,6 +30,9 @@ staticplot <- covid_status %>%
   geom_line(aes(y = Number.of.patients.in.ICU.with.COVID.19), color = "coral") + 
   scale_x_date(date_breaks = "1 month", date_labels = "%m-%y")
 
+# staticplot
+
+# Dynamic plot of similar data, likely to be used in finished product
 dynamicplot <- covid_status %>%
   plot_ly(x=~Reported.Date) %>%
   add_lines(y = ~Confirmed.Positive, name = "Confirmed Positive", legendgroup = "current") %>%
@@ -38,4 +46,82 @@ dynamicplot <- covid_status %>%
          xaxis = list(title = "Reported Date"),
          yaxis = list(title = "Quantity of Cases")
          )
-dynamicplot
+# dynamicplot
+
+# Lets look at daily updates by region.  Create separate pivots for active, resolved, and death counts by region
+covid_status_by_PHU$FILE_DATE <- as.Date(covid_status_by_PHU$FILE_DATE)
+covid_status_by_PHU$PHU_NUM <- as.integer(covid_status_by_PHU$PHU_NUM)
+activecases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>%
+  select(!c(PHU_NAME, RESOLVED_CASES, DEATHS)) %>% 
+  pivot_wider(names_from = c(PHU_NUM), values_from = c(ACTIVE_CASES), values_fn = sum, names_sep = "`")
+resolvedcases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>% 
+  select(!c(PHU_NAME, ACTIVE_CASES, DEATHS)) %>% 
+  pivot_wider(names_from = c(PHU_NUM), values_from = c(RESOLVED_CASES), values_fn = sum, names_sep = "`")
+deathcases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>% 
+  select(!c(PHU_NAME, ACTIVE_CASES, RESOLVED_CASES)) %>% 
+  pivot_wider(names_from = c(PHU_NUM), values_from = c(DEATHS), values_fn = sum, names_sep = "`")
+
+
+
+# Load in all of our shape file data.
+mapshapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
+shapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
+
+latestactive <- activecases[activecases$FILE_DATE == max(activecases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
+latestactive$PHU_ID <- as.integer(latestactive$PHU_ID)
+# latestactive <- latestactive %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
+# latestactive$PHU_ID <- as.integer(latestactive$PHU_ID)
+mapshapes <- latestactive %>% right_join(mapshapes)
+
+latestresolved <- resolvedcases[resolvedcases$FILE_DATE == max(resolvedcases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestresolved")
+latestresolved$PHU_ID <- as.integer(latestresolved$PHU_ID)
+# latestresolved <- latestresolved %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestresolved")
+# latestresolved$PHU_ID <- as.integer(latestresolved$PHU_ID)
+mapshapes <- latestresolved %>% select(PHU_ID, latestresolved) %>% right_join(mapshapes, by = "PHU_ID")
+
+latestdeath <- deathcases[deathcases$FILE_DATE == max(deathcases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestdeath")
+latestdeath$PHU_ID <- as.integer(latestresolved$PHU_ID)
+mapshapes <- latestdeath %>% select(PHU_ID, latestdeath) %>% right_join(mapshapes, by = "PHU_ID")
+
+mapshapes$popup <- paste(sep="",
+                      "<b>", NAME_ENG,"</b><br>",
+                      "<b>Active</b><div id=currentactive>",latestactive,"<br></div>",
+                      "<b>Resolved:</b><div id=currentresolved>",latestresolved,"<br></div>")
+shapes <- shapes %>% left_join(mapshapes %>% select(c("PHU_ID", "latestactive", "latestresolved", "latestdeath")))
+
+shapes <- shapes %>% left_join(case_overview, by = c("PHU_ID" = "Reporting_PHU_ID"))
+
+shapes$popup <- paste(sep="",
+                      "<b>", shapes$NAME_ENG,"</b><br>",
+                      "<div id=current><b>Active: </b>",shapes$latestactive,"</div>",
+                      "<b>Resolved: </b>",shapes$latestresolved,"<br></div>",
+                      "<table><tr><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
+                      "<tr><td>", shapes$`<20`,
+                      "</td><td>", shapes$`20s`,
+                      "</td><td>", shapes$`30s`,
+                      "</td><td>", shapes$`40s`,
+                      "</td><td>", shapes$`50s`,
+                      "</td><td>", shapes$`60s`,
+                      "</td><td>", shapes$`70s`,
+                      "</td><td>", shapes$`80s`,
+                      "</td><td>", shapes$`90+`,
+                      "</td></tr></table>"
+                      )
+
+m <- leaflet(shapes) %>%
+  addTiles() %>%
+  addPolygons(
+    color = "#444444", 
+    weight = 1, 
+    smoothFactor = 0.5,
+    opacity = 1.0,
+    #fillOpacity = ~as.numeric(Frequency)/100,
+    #fillColor = ~pal(Frequent),
+    popup = ~popup,
+    highlightOptions = highlightOptions(
+      color = "white",
+      weight = 2,
+      bringToFront = TRUE
+    )
+  ) 
+m
