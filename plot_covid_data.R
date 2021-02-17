@@ -3,6 +3,8 @@ library(tidyverse)
 library(plotly)
 library(sf)
 library(rmapshaper)
+library(leaflet)
+library(ggformula)
 
 #  Load all of my data files.  These are downloaded daily by a separate script
 vaccinedestfile <- "~/RProjects/COVID/vaccine_data.csv"
@@ -62,6 +64,53 @@ deathcases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>%
   pivot_wider(names_from = c(PHU_NUM), values_from = c(DEATHS), values_fn = sum, names_sep = "`")
 
 
+# I want to generate a plot that shows the 14-day trend for each PHU
+# For each PHU we will generate a small plot, save as jpg in /img folder
+# then reference to it will be included in popup html so image of plot shows
+# within the popup
+
+plotsize <- c(100,60)
+
+make_phu_plot <- function (cases, col_id) {
+  df <- data.frame("x" = cases[1], "y" = cases[col_id])
+  colnames(df) <- c("FILE_DATE", "y")
+  #df['y'] <- cases[col_id]
+  #df['ylabel'] <- colnames(cases[col_id])
+  df <- df %>% slice_max(FILE_DATE, n = 30)
+  ggplot(data = df, aes(x = FILE_DATE, y = y)) +
+    geom_line(
+      colour = "pink",
+      size = 0.1
+    ) +
+    geom_spline (
+      color = "red",
+      size = 0.75,
+      alpha = 0.5,
+      lineend = "square"
+    ) +
+    theme_void() +
+    ggtitle("Last 30 days") + 
+    theme(
+      plot.title = element_text(color="black", size=12, face="italic", hjust = 0.5, vjust = 2)
+    )
+}
+
+save_phu_plot <- function (cases, col_id) {
+  ggsave(
+    paste("~/ShinyApps/OntarioCOVID/img/",colnames(cases[col_id]),".jpg",sep=""),
+    plot = make_phu_plot(cases,col_id),
+    width = 80,
+    height = 20,
+    units = "mm",
+    dpi = "screen"
+  )
+}
+result <- sapply(2:length(activecases), function(i) save_phu_plot(activecases,i))
+#save_phu_plot(activecases,phuquantity)
+#ggplot(activecases, aes(x=1, y=activecases[2])) + geom_line()
+
+
+
 
 # Load in all of our shape file data.
 mapshapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
@@ -83,10 +132,10 @@ latestdeath <- deathcases[deathcases$FILE_DATE == max(deathcases$FILE_DATE),] %>
 latestdeath$PHU_ID <- as.integer(latestresolved$PHU_ID)
 mapshapes <- latestdeath %>% select(PHU_ID, latestdeath) %>% right_join(mapshapes, by = "PHU_ID")
 
-mapshapes$popup <- paste(sep="",
-                      "<b>", NAME_ENG,"</b><br>",
-                      "<b>Active</b><div id=currentactive>",latestactive,"<br></div>",
-                      "<b>Resolved:</b><div id=currentresolved>",latestresolved,"<br></div>")
+#mapshapes$popup <- paste(sep="",
+#                      "<b>", NAME_ENG,"</b><br>",
+#                      "<b>Active</b><div id=currentactive>",latestactive,"<br></div>",
+#                      "<b>Resolved:</b><div id=currentresolved>",latestresolved,"<br></div>")
 shapes <- shapes %>% left_join(mapshapes %>% select(c("PHU_ID", "latestactive", "latestresolved", "latestdeath")))
 
 shapes <- shapes %>% left_join(case_overview, by = c("PHU_ID" = "Reporting_PHU_ID"))
@@ -95,8 +144,8 @@ shapes$popup <- paste(sep="",
                       "<b>", shapes$NAME_ENG,"</b><br>",
                       "<div id=current><b>Active: </b>",shapes$latestactive,"</div>",
                       "<b>Resolved: </b>",shapes$latestresolved,"<br></div>",
-                      "<table><tr><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
-                      "<tr><td>", shapes$`<20`,
+                      "<table style= \"border:1px solid black;font-size:10px;\"><tr border=\"1px solid black\"><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
+                      "<tr border=\"1px solid black\"><td>", shapes$`<20`,
                       "</td><td>", shapes$`20s`,
                       "</td><td>", shapes$`30s`,
                       "</td><td>", shapes$`40s`,
@@ -105,7 +154,8 @@ shapes$popup <- paste(sep="",
                       "</td><td>", shapes$`70s`,
                       "</td><td>", shapes$`80s`,
                       "</td><td>", shapes$`90+`,
-                      "</td></tr></table>"
+                      "</td></tr></table><br>",
+                      "<img src=\"./img/", shapes$PHU_ID, ".jpg\" >"
                       )
 
 m <- leaflet(shapes) %>%
@@ -124,4 +174,5 @@ m <- leaflet(shapes) %>%
       bringToFront = TRUE
     )
   ) 
-m
+library(htmlwidgets)
+saveWidget(m, file="~/ShinyApps/OntarioCOVID/index.html")
