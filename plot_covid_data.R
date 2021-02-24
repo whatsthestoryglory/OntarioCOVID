@@ -97,7 +97,7 @@ make_phu_plot <- function (cases, col_id) {
 
 save_phu_plot <- function (cases, col_id) {
   ggsave(
-    paste("~/ShinyApps/OntarioCOVID/img/",colnames(cases[col_id]),".jpg",sep=""),
+    paste("~/ShinyApps/OntarioCOVID/img/",colnames(cases[col_id]),".svg",sep=""),
     plot = make_phu_plot(cases,col_id),
     width = 80,
     height = 20,
@@ -115,6 +115,8 @@ result <- sapply(2:length(activecases), function(i) save_phu_plot(activecases,i)
 # Load in all of our shape file data.
 mapshapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
 shapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
+
+shapes <- ms_simplify(shapes)
 
 latestactive <- activecases[activecases$FILE_DATE == max(activecases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
 latestactive$PHU_ID <- as.integer(latestactive$PHU_ID)
@@ -144,7 +146,7 @@ shapes$popup <- paste(sep="",
                       "<b>", shapes$NAME_ENG,"</b><br>",
                       "<div id=current><b>Active: </b>",shapes$latestactive,"</div>",
                       "<b>Resolved: </b>",shapes$latestresolved,"<br></div>",
-                      "<table style= \"border:1px solid black;font-size:10px;\"><tr border=\"1px solid black\"><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
+                      "<table rules=\"rows\" style= \"border:1px solid black;font-size:10px;\"><tr border=\"1px solid black\"><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
                       "<tr border=\"1px solid black\"><td>", shapes$`<20`,
                       "</td><td>", shapes$`20s`,
                       "</td><td>", shapes$`30s`,
@@ -155,7 +157,8 @@ shapes$popup <- paste(sep="",
                       "</td><td>", shapes$`80s`,
                       "</td><td>", shapes$`90+`,
                       "</td></tr></table><br>",
-                      "<img src=\"./img/", shapes$PHU_ID, ".jpg\" >"
+                      "<img src=\"./img/", shapes$PHU_ID, ".svg\" ><br>",
+                      "<div style=\"font-size:6pt;text-align:right\">","Last updated: ",max(activecases$FILE_DATE),"</div>"
                       )
 
 m <- leaflet(shapes) %>%
