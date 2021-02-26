@@ -103,6 +103,14 @@ make_phu_plot <- function (cases, col_id) {
       hjust = "inward",
       vjust = "inward"
     ) +
+    geom_text_repel(
+      data = subset(df, y == max(y)),
+      aes(label = y),
+      size = 3,
+      nudge_y = 5
+      #hjust = "inward",
+      #vjust = "inward"
+    ) +
     theme_void() +
     ggtitle("Last 30 days") + 
     theme(
