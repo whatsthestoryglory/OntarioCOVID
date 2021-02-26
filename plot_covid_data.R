@@ -5,6 +5,8 @@ library(sf)
 library(rmapshaper)
 library(leaflet)
 library(ggformula)
+library(directlabels)
+library(ggrepel)
 
 #  Load all of my data files.  These are downloaded daily by a separate script
 vaccinedestfile <- "~/RProjects/COVID/vaccine_data.csv"
@@ -64,8 +66,8 @@ deathcases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>%
   pivot_wider(names_from = c(PHU_NUM), values_from = c(DEATHS), values_fn = sum, names_sep = "`")
 
 
-# I want to generate a plot that shows the 14-day trend for each PHU
-# For each PHU we will generate a small plot, save as jpg in /img folder
+# I want to generate a plot that shows the 30-day trend for each PHU
+# For each PHU we will generate a small plot, save as svg in /img folder
 # then reference to it will be included in popup html so image of plot shows
 # within the popup
 
@@ -74,8 +76,6 @@ plotsize <- c(100,60)
 make_phu_plot <- function (cases, col_id) {
   df <- data.frame("x" = cases[1], "y" = cases[col_id])
   colnames(df) <- c("FILE_DATE", "y")
-  #df['y'] <- cases[col_id]
-  #df['ylabel'] <- colnames(cases[col_id])
   df <- df %>% slice_max(FILE_DATE, n = 30)
   ggplot(data = df, aes(x = FILE_DATE, y = y)) +
     geom_line(
@@ -88,11 +88,30 @@ make_phu_plot <- function (cases, col_id) {
       alpha = 0.5,
       lineend = "square"
     ) +
+    #geom_dl(
+    #  data = subset(df, FILE_DATE == max(FILE_DATE)),
+    #  aes(label = y),
+    #  method = list(
+    #    dl.trans(x = x + 0.2),
+    #    "last.points", cex = 0.8)
+    #) +
+    geom_text(
+      data = subset(df, FILE_DATE == max(FILE_DATE)),
+      aes(label = y),
+      size = 3,
+      nudge_x = 2,
+      hjust = "inward",
+      vjust = "inward"
+    ) +
     theme_void() +
     ggtitle("Last 30 days") + 
     theme(
-      plot.title = element_text(color="black", size=12, face="italic", hjust = 0.5, vjust = 2)
-    )
+      plot.title = element_text(color="black", size=10, face="italic", hjust = 0.5, vjust = 2),
+      panel.grid.major.x = element_line(colour = "black"),
+      axis.text.x = element_text(angle = 0, debug = FALSE, size = 8)
+    ) +
+    scale_x_date(date_breaks = "1 month",
+                 date_labels = "%B %e")
 }
 
 save_phu_plot <- function (cases, col_id) {
@@ -109,9 +128,32 @@ result <- sapply(2:length(activecases), function(i) save_phu_plot(activecases,i)
 #save_phu_plot(activecases,phuquantity)
 #ggplot(activecases, aes(x=1, y=activecases[2])) + geom_line()
 
+determine_rise_fall <- function(cases, col_id) {
+  df <- data.frame("x" = cases[1], "y" = cases[col_id])
+  colnames(df) <- c("FILE_DATE", "y")
+  print(max((df$y[df$FILE_DATE == max(df$FILE_DATE)-3]),1,na.rm=TRUE))
+  #print(df$y[df$FILE_DATE == max(df$FILE_DATE)],",", (df$y[df$FILE_DATE == max(df$FILE_DATE)-3]))
+  if (df$y[df$FILE_DATE == max(df$FILE_DATE)] / 
+      max((df$y[df$FILE_DATE == max(df$FILE_DATE)-3]),1,na.rm=TRUE) >= 1.03) {
+    return("Rising")
+  } else if (df$y[df$FILE_DATE == max(df$FILE_DATE)] / 
+             max((df$y[df$FILE_DATE == max(df$FILE_DATE)-3]),1,na.rm=TRUE) <= 0.97) {
+    return("Falling")
+  } else return("Stagnant")
+}
 
+determine_growth <- function(cases,col_id) {
+  df <- data.frame("FILE_DATE" = cases[1], "y" = cases[col_id])
+  colnames(df) <- c("FILE_DATE", "y")
+  print(df)
+  return((df$y[df$FILE_DATE == max(df$FILE_DATE)] / 
+             max((df$y[df$FILE_DATE == max(df$FILE_DATE)-3]),1,na.rm=TRUE)))
+}
 
-
+riseorfall <- as_tibble(sapply(2:length(activecases), function(i) determine_rise_fall(activecases,i)))
+riseorfall$value <- factor(riseorfall$value, levels = c("Rising", "Stagnant", "Falling"))
+riseorfall$PHU_ID <- as.numeric(colnames(activecases[-1]))
+riseorfall$growth <- (sapply(2:length(activecases), function(i) determine_growth(activecases,i)))
 # Load in all of our shape file data.
 mapshapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
 shapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
@@ -142,12 +184,15 @@ shapes <- shapes %>% left_join(mapshapes %>% select(c("PHU_ID", "latestactive", 
 
 shapes <- shapes %>% left_join(case_overview, by = c("PHU_ID" = "Reporting_PHU_ID"))
 
+shapes <- shapes %>% left_join(riseorfall, by="PHU_ID")
+
 shapes$popup <- paste(sep="",
-                      "<b>", shapes$NAME_ENG,"</b><br>",
+                      "<div style=\"font-size:14px;text-align:center;font-weight:bold;\">", shapes$NAME_ENG,"</div><br>",
                       "<div id=current><b>Active: </b>",shapes$latestactive,"</div>",
                       "<b>Resolved: </b>",shapes$latestresolved,"<br></div>",
-                      "<table rules=\"rows\" style= \"border:1px solid black;font-size:10px;\"><tr border=\"1px solid black\"><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
-                      "<tr border=\"1px solid black\"><td>", shapes$`<20`,
+                      "<br><div style=\"font-size:12px;text-align:center;font-weight:bold;\">","Total COVID-19 cases by age group","</div>",
+                      "<table rules=\"all\" style= \"border:1px solid black;font-size:10px;width:300px;text-align:center\"><tr style=\"font-weight:bold;\"><td>&lt;20</td><td>20s</td><td>30s</td><td>40s</td><td>50s</td><td>60s</td><td>70s</td><td>80s</td><td>90+</td></tr>",
+                      "<tr style=\"font-weight:normal;\"><td>", shapes$`<20`,
                       "</td><td>", shapes$`20s`,
                       "</td><td>", shapes$`30s`,
                       "</td><td>", shapes$`40s`,
@@ -160,6 +205,7 @@ shapes$popup <- paste(sep="",
                       "<img src=\"./img/", shapes$PHU_ID, ".svg\" ><br>",
                       "<div style=\"font-size:6pt;text-align:right\">","Last updated: ",max(activecases$FILE_DATE),"</div>"
                       )
+pal <- colorFactor(palette = c("#D2222D","#FCBE00","#087200"),as.factor(shapes$value))
 
 m <- leaflet(shapes) %>%
   addTiles() %>%
@@ -169,13 +215,19 @@ m <- leaflet(shapes) %>%
     smoothFactor = 0.5,
     opacity = 1.0,
     #fillOpacity = ~as.numeric(Frequency)/100,
-    #fillColor = ~pal(Frequent),
+    fillColor = ~pal(value),
     popup = ~popup,
     highlightOptions = highlightOptions(
       color = "white",
       weight = 2,
       bringToFront = TRUE
     )
-  ) 
+  ) %>%
+  addLegend(
+    "topright", 
+    pal = pal,
+    values = ~value,
+    title = "3-day Trend"
+  )
 library(htmlwidgets)
 saveWidget(m, file="~/ShinyApps/OntarioCOVID/index.html")
