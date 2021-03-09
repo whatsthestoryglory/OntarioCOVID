@@ -56,13 +56,13 @@ dynamicplot <- covid_status %>%
 covid_status_by_PHU$FILE_DATE <- as.Date(covid_status_by_PHU$FILE_DATE)
 covid_status_by_PHU$PHU_NUM <- as.integer(covid_status_by_PHU$PHU_NUM)
 activecases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>%
-  select(!c(PHU_NAME, RESOLVED_CASES, DEATHS)) %>% 
+  dplyr::select(!c(PHU_NAME, RESOLVED_CASES, DEATHS)) %>% 
   pivot_wider(names_from = c(PHU_NUM), values_from = c(ACTIVE_CASES), values_fn = sum, names_sep = "`")
 resolvedcases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>% 
-  select(!c(PHU_NAME, ACTIVE_CASES, DEATHS)) %>% 
+  dplyr::select(!c(PHU_NAME, ACTIVE_CASES, DEATHS)) %>% 
   pivot_wider(names_from = c(PHU_NUM), values_from = c(RESOLVED_CASES), values_fn = sum, names_sep = "`")
 deathcases <- covid_status_by_PHU[covid_status_by_PHU$PHU_NAME != "",] %>% 
-  select(!c(PHU_NAME, ACTIVE_CASES, RESOLVED_CASES)) %>% 
+  dplyr::select(!c(PHU_NAME, ACTIVE_CASES, RESOLVED_CASES)) %>% 
   pivot_wider(names_from = c(PHU_NUM), values_from = c(DEATHS), values_fn = sum, names_sep = "`")
 
 
@@ -168,27 +168,34 @@ shapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
 
 shapes <- ms_simplify(shapes)
 
-latestactive <- activecases[activecases$FILE_DATE == max(activecases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
+latestactive <- activecases[activecases$FILE_DATE == max(activecases$FILE_DATE),] %>% 
+  pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
 latestactive$PHU_ID <- as.integer(latestactive$PHU_ID)
 # latestactive <- latestactive %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
 # latestactive$PHU_ID <- as.integer(latestactive$PHU_ID)
 mapshapes <- latestactive %>% right_join(mapshapes)
 
-latestresolved <- resolvedcases[resolvedcases$FILE_DATE == max(resolvedcases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestresolved")
+latestresolved <- resolvedcases[resolvedcases$FILE_DATE == max(resolvedcases$FILE_DATE),] %>% 
+  pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestresolved")
 latestresolved$PHU_ID <- as.integer(latestresolved$PHU_ID)
 # latestresolved <- latestresolved %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestresolved")
 # latestresolved$PHU_ID <- as.integer(latestresolved$PHU_ID)
-mapshapes <- latestresolved %>% select(PHU_ID, latestresolved) %>% right_join(mapshapes, by = "PHU_ID")
+mapshapes <- latestresolved %>% 
+  dplyr::select(PHU_ID, latestresolved) %>% right_join(mapshapes, by = "PHU_ID")
 
-latestdeath <- deathcases[deathcases$FILE_DATE == max(deathcases$FILE_DATE),] %>% pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestdeath")
+latestdeath <- deathcases[deathcases$FILE_DATE == max(deathcases$FILE_DATE),] %>% 
+  pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestdeath")
 latestdeath$PHU_ID <- as.integer(latestresolved$PHU_ID)
-mapshapes <- latestdeath %>% select(PHU_ID, latestdeath) %>% right_join(mapshapes, by = "PHU_ID")
+mapshapes <- latestdeath %>% 
+  dplyr::select(PHU_ID, latestdeath) %>% right_join(mapshapes, by = "PHU_ID")
 
 #mapshapes$popup <- paste(sep="",
 #                      "<b>", NAME_ENG,"</b><br>",
 #                      "<b>Active</b><div id=currentactive>",latestactive,"<br></div>",
 #                      "<b>Resolved:</b><div id=currentresolved>",latestresolved,"<br></div>")
-shapes <- shapes %>% left_join(mapshapes %>% select(c("PHU_ID", "latestactive", "latestresolved", "latestdeath")))
+shapes <- shapes %>% 
+  left_join(mapshapes %>% 
+  dplyr::select(c("PHU_ID", "latestactive", "latestresolved", "latestdeath")))
 
 shapes <- shapes %>% left_join(case_overview, by = c("PHU_ID" = "Reporting_PHU_ID"))
 
