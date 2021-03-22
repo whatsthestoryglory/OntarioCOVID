@@ -1,0 +1,139 @@
+---
+output: html_document
+params:
+  phu_id: "3895"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+confirmed_cases_file <- "~/RProjects/COVID/confirmed_cases.csv"
+confirmed_cases <- read.csv(confirmed_cases_file)
+covid_status_by_PHU_file <- "~/RProjects/COVID/covid_status_by_PHU.csv"
+covid_status_by_PHU <- read.csv(covid_status_by_PHU_file)
+phu_name <- str_to_title(covid_status_by_PHU$PHU_NAME[covid_status_by_PHU$PHU_NUM == params$phu_id][1])
+library(plotly)
+library(tidyverse)
+```
+
+# `r covid_status_by_PHU$PHU_NAME[covid_status_by_PHU$PHU_NUM == params$phu_id][1]`
+
+This is the latest information on file for `r phu_name`
+
+## Overall trend
+
+This next section is supposed to show an interactive graph charting the case count for `r phu_name` against the province of Ontario.  They will be plotted against independent y axes so trends can be more easily compared
+```{r plot_case_count}
+phu_df <- covid_status_by_PHU[covid_status_by_PHU$PHU_NUM == params$phu_id,] %>% arrange(FILE_DATE)
+province_data <- covid_status_by_PHU %>% group_by(FILE_DATE) %>% summarize(ACTIVE_CASES = sum(ACTIVE_CASES), RESOLVED_CASES = sum(RESOLVED_CASES), DEATHS = sum(DEATHS))
+province_data$PHU_NAME <- "ONTARIO"
+province_data$PHU_NUM <- 0
+#phu_df <- phu_df %>% union(province_data)
+phu_plot <- plot_ly(
+  phu_df,
+  x = ~FILE_DATE,
+  y = ~ACTIVE_CASES,
+  name = ~PHU_NAME,
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  data = province_data,
+  x = ~FILE_DATE,
+  y = ~ACTIVE_CASES,
+  type = 'scatter',
+  mode = 'lines',
+  yaxis = "y2"
+) %>% layout(
+  yaxis2 = list(overlaying = "y", side = "right")
+)
+phu_plot
+```
+
+
+## Trend by age group
+
+The below chart shows the same data as above, but broken down by age group.  It is interesting to see where each group falls over time.
+```{r trend_by_age_group}
+# This gives me a table showing how many new cases were reported by date, PHU, and age group
+cases_by_age <- confirmed_cases %>% group_by(Case_Reported_Date, Reporting_PHU_ID, Age_Group) %>% summarize(n = n()) %>% pivot_wider(names_from = Age_Group, values_from = n)
+cases_by_age[is.na(cases_by_age)] <- 0
+# Next we apply a 14 day rolling sum, as my current understanding is that cases are considered "Active" for 14 days from being reported
+
+active_cases_by_age <- RcppRoll::roll_sum(cases_by_age$`50s`[cases_by_age$Reporting_PHU_ID == '3895'], align = 'left')
+
+rollingsum <- function(df, phu) {
+  data <- df[df$Reporting_PHU_ID == phu,]
+  rolling_data <- as_tibble(RcppRoll::roll_sum(as.matrix(data[,-(1:2)]), align = 'right', fill=0,na.rm=FALSE, n=14)) 
+  return(data.frame(data[,1:2],rolling_data))
+}
+
+tester <- rollingsum(cases_by_age,params$phu_id)
+
+phu_plot <- plot_ly(
+  tester,
+  x = ~Case_Reported_Date,
+  y = ~X90.,
+  name = "90+",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X80s,
+  name = "80s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X70s,
+  name = "70s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X60s,
+  name = "60s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X50s,
+  name = "50s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X40s,
+  name = "40s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X30s,
+  name = "30s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X20s,
+  name = "20s",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~X.20,
+  name = "<20",
+  type = 'scatter',
+  mode = 'lines'
+) %>% add_trace(
+  y = ~UNKNOWN,
+  name = "Unknown",
+  type = 'scatter',
+  mode = 'lines'
+) %>% layout(title = "Active case count by age group",
+             xaxis = list(title="Date"),
+             yaxis = list(title="# of Active Cases"))
+
+phu_plot
+```
+
+## Trend by age group and population
+
+```{r age_group_and_population}
+# Get population by age group and PHU
+
+# Divide positive by age group and PHU
+
+# Use same plot from above
+print("More to come here soon...")
+```

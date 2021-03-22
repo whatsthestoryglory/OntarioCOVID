@@ -225,7 +225,7 @@ shapes$popup <- paste(sep="",
                       "</td><td>", shapes$`80s`,
                       "</td><td>", shapes$`90+`,
                       "</td></tr></table><br>",
-                      "<img src=\"./img/", shapes$PHU_ID, ".svg\" ><br>",
+                      "<a href=\"", shapes$PHU_ID,".html\"><img src=\"./img/", shapes$PHU_ID, ".svg\" ></a><br>",
                       "<div style=\"font-size:6pt;text-align:right\">","Last updated: ",max(activecases$FILE_DATE),"</div>"
                       )
 pal <- colorFactor(palette = c("#D2222D","#FCBE00","#087200"),as.factor(shapes$value))
@@ -254,3 +254,18 @@ m <- leaflet(shapes) %>%
   )
 library(htmlwidgets)
 saveWidget(m, file="~/ShinyApps/OntarioCOVID/index.html")
+
+phu_list <- unique(cases_by_age$Reporting_PHU_ID)
+
+render_phus <- function(testphu) {
+  # Create pages for each PHU
+  rmarkdown::render("phu_info.Rmd", params = list(
+      phu_id = testphu
+    ),
+    output_file = paste0("~/ShinyApps/OntarioCOVID/",testphu,".html")
+  )
+}
+
+for(i in phu_list) {
+  render_phus(i)
+}
