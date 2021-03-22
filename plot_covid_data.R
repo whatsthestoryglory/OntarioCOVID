@@ -162,11 +162,19 @@ riseorfall <- as_tibble(sapply(2:length(activecases), function(i) determine_rise
 riseorfall$value <- factor(riseorfall$value, levels = c("Rising", "Stagnant", "Falling"))
 riseorfall$PHU_ID <- as.numeric(colnames(activecases[-1]))
 riseorfall$growth <- (sapply(2:length(activecases), function(i) determine_growth(activecases,i)))
-# Load in all of our shape file data.
-mapshapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
-shapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
 
-shapes <- ms_simplify(shapes)
+
+# Load in all of our shape file data.
+
+if(file.exists('shapes/simplified.shp')) {
+  shapes <- st_read('shapes/simplified.shp')
+
+} else {
+  shapes <- st_read('shapes/Ministry_of_Health_Public_Health_Unit_Boundary.shp')
+  shapes <- ms_simplify(shapes)
+  result <- st_write(shapes,'shapes/simplified.shp', append=FALSE)
+}
+mapshapes <- st_read('shapes/simplified.shp')
 
 latestactive <- activecases[activecases$FILE_DATE == max(activecases$FILE_DATE),] %>% 
   pivot_longer(!FILE_DATE, names_to = "PHU_ID", values_to = "latestactive")
