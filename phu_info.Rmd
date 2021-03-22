@@ -56,6 +56,8 @@ The below chart shows the same data as above, but broken down by age group.  It 
 # This gives me a table showing how many new cases were reported by date, PHU, and age group
 cases_by_age <- confirmed_cases %>% group_by(Case_Reported_Date, Reporting_PHU_ID, Age_Group) %>% summarize(n = n()) %>% pivot_wider(names_from = Age_Group, values_from = n)
 cases_by_age[is.na(cases_by_age)] <- 0
+cases_by_age$Case_Reported_Date <- as.Date(cases_by_age$Case_Reported_Date)
+
 # Next we apply a 14 day rolling sum, as my current understanding is that cases are considered "Active" for 14 days from being reported
 
 active_cases_by_age <- RcppRoll::roll_sum(cases_by_age$`50s`[cases_by_age$Reporting_PHU_ID == '3895'], align = 'left')
